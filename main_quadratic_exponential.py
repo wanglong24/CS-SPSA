@@ -1,140 +1,171 @@
+from datetime import date
 import numpy as np
 import matplotlib.pyplot as plt
 
-import loss.quadratic_exponential
+from loss.quadratic_exponential import QuadraticExponential
 
 from algorithm.fdsa import FDSA
 from algorithm.spsa import SPSA
 from algorithm.cs_fdsa import CsFDSA
 from algorithm.cs_spsa import CsSPSA
 
+from utility.utility import Utility
+
+np.random.seed(99)
+
+# initialize loss object
 p = 10
-eta = np.array([1.1025, 1.6945, 1.4789, 1.9262, 0.7505,
-                1.3267, 0.8428, 0.7247, 0.7693, 1.3986])
-theta_star = np.array([0.286, 0.229, 0.248, 0.211, 0.325,
-                        0.263, 0.315, 0.327, 0.323, 0.256])
-loss_star = loss.quadratic_exponential.loss_true(eta, theta_star)
-
-# p = 100
-# np.random.seed(100)
-# eta = np.random.uniform(low=0.5, high=2.0, size=p)
-# import scipy.optimize
-# def grad(theta):
-#     return loss.quadratic_exponential.gradient_true(eta, theta)
-# theta_star = scipy.optimize.broyden1(grad, np.ones(p), f_tol=1e-14)
-# loss_star = loss.quadratic_exponential.loss_true(eta, theta_star)
-
-def loss_noisy(theta):
-    X = np.random.exponential(1 / eta)
-    return loss.quadratic_exponential.loss_noisy(X, theta)
-
-def loss_true(theta):
-    return loss.quadratic_exponential.loss_true(eta, theta)
+loss_obj = QuadraticExponential(p)
 
 theta_0 = np.ones(p)
-loss_0 = loss.quadratic_exponential.loss_true(eta, theta_0)
+loss_0 = loss_obj.get_loss_true(theta_0)
+theta_star = loss_obj.get_theta_star()
+loss_star = loss_obj.get_loss_true(theta_star)
+theta_0_norm_error = np.linalg.norm(theta_0 - theta_star)
 
 # parameters
-a = 0.02; c = 0.2; A = 100
+if p == 10:
+    a = 0.02; c = 0.2; A = 100
+elif p == 100:
+    a = 0.01; c = 0.1; A = 100
+else:
+    a = 0; c = 0; A = 0
+
 alpha = 0.602; gamma = 0.151
 iter_num = 50000; rep_num = 20
 
+### FDSA ###
 print("running FDSA")
-FDSA_solver = FDSA(a=a, c=c, A=A, alpha=alpha, gamma=gamma,
-                   iter_num=int(iter_num/(2*p)), rep_num=rep_num,
-                   theta_0=theta_0, loss_true=loss_true, loss_noisy=loss_noisy)
-FDSA_solver.train()
-# loss_ks = np.mean(FDSA_solver.loss_k_all, axis=1)
-# plt.plot(loss_ks)
+FDSA_optimizer = FDSA(a=a, A=A, alpha=alpha,
+                      c=c, gamma=gamma,
+                      iter_num=int(iter_num/(2*p)), rep_num=rep_num,
+                      theta_0=theta_0, loss_obj=loss_obj,
+                      record_theta_flag=True, record_loss_flag=True)
+FDSA_optimizer.train()
+# with open('data/Quadratic_exponential_p_10_FDSA_2020_11_26.npy', 'wb') as f:
+#     np.save(f, FDSA_optimizer)
 
-print("running SPSA")
-SPSA_solver = SPSA(a=a, c=c, A=A, alpha=alpha, gamma=gamma,
-                   iter_num=int(iter_num/2), rep_num=rep_num,
-                   theta_0=theta_0, loss_true=loss_true, loss_noisy=loss_noisy)
-SPSA_solver.train()
-# loss_ks = np.mean(SPSA_solver.loss_k_all, axis=1)
-# plt.plot(loss_ks)
+FDSA_theta_per_iter = FDSA_optimizer.get_theta_per_iter()
+FDSA_theta_per_iter_norm_error = Utility.get_theta_norm_error(FDSA_theta_per_iter, theta_0, theta_star)
+Utility.plot_norm_error(FDSA_theta_per_iter_norm_error, "FDSA theta")
 
+FDSA_loss_per_iter = FDSA_optimizer.get_loss_per_iter()
+FDSA_loss_per_iter_norm_error = Utility.get_loss_norm_error(FDSA_loss_per_iter, loss_0, loss_star)
+Utility.plot_norm_error(FDSA_loss_per_iter_norm_error, "FDSA loss")
+
+print("FDSA terminal loss error:", FDSA_loss_per_iter_norm_error[-1])
+
+### CS-FDSA ###
 print("running CS-FDSA")
-CS_FDSA_solver = CsFDSA(a=a, c=c, A=A, alpha=alpha, gamma=gamma,
-                   iter_num=int(iter_num/p), rep_num=rep_num,
-                   theta_0=theta_0, loss_true=loss_true, loss_noisy=loss_noisy)
-CS_FDSA_solver.train()
-# loss_ks = np.mean(CS_FDSA_solver.loss_k_all, axis=1)
-# plt.plot(loss_ks)
+CS_FDSA_optimizer = CsFDSA(a=a, A=A, alpha=alpha,
+                           c=c, gamma=gamma,
+                           iter_num=int(iter_num/p), rep_num=rep_num,
+                           theta_0=theta_0, loss_obj=loss_obj,
+                           record_theta_flag=True, record_loss_flag=True)
+CS_FDSA_optimizer.train()
 
+CS_FDSA_theta_per_iter = CS_FDSA_optimizer.get_theta_per_iter()
+CS_FDSA_theta_per_iter_norm_error = Utility.get_theta_norm_error(CS_FDSA_theta_per_iter, theta_0, theta_star)
+Utility.plot_norm_error(CS_FDSA_theta_per_iter_norm_error, "CS-FDSA theta")
+
+CS_FDSA_loss_per_iter = CS_FDSA_optimizer.get_loss_per_iter()
+CS_FDSA_loss_per_iter_norm_error = Utility.get_loss_norm_error(CS_FDSA_loss_per_iter, loss_0, loss_star)
+Utility.plot_norm_error(CS_FDSA_loss_per_iter_norm_error, "CS-FDSA loss")
+
+print("CS-FDSA terminal loss error:", CS_FDSA_loss_per_iter_norm_error[-1])
+
+### SPSA ###
+print("running SPSA")
+SPSA_optimizer = SPSA(a=a, A=A, alpha=alpha,
+                      c=c, gamma=gamma,
+                      iter_num=int(iter_num/2), rep_num=rep_num,
+                      theta_0=theta_0, loss_obj=loss_obj,
+                      record_theta_flag=True, record_loss_flag=True)
+SPSA_optimizer.train()
+
+SPSA_theta_per_iter = SPSA_optimizer.get_theta_per_iter()
+SPSA_theta_per_iter_norm_error = Utility.get_theta_norm_error(SPSA_theta_per_iter, theta_0, theta_star)
+Utility.plot_norm_error(SPSA_theta_per_iter_norm_error, "SPSA theta")
+
+SPSA_loss_per_iter = SPSA_optimizer.get_loss_per_iter()
+SPSA_loss_per_iter_norm_error = Utility.get_loss_norm_error(SPSA_loss_per_iter, loss_0, loss_star)
+Utility.plot_norm_error(SPSA_loss_per_iter_norm_error, "SPSA loss")
+
+print("SPSA terminal loss error:", SPSA_loss_per_iter_norm_error[-1])
+
+### CS-SPSA ###
 print("running CS-SPSA")
-CS_SPSA_solver = CsSPSA(a=a, c=c, A=A, alpha=alpha, gamma=gamma,
-                   iter_num=iter_num, rep_num=rep_num,
-                   theta_0=theta_0, loss_true=loss_true, loss_noisy=loss_noisy)
-CS_SPSA_solver.train()
-# loss_ks = np.mean(CS_SPSA_solver.loss_k_all, axis=1)
-# plt.plot(loss_ks)
+CS_SPSA_optimizer = CsSPSA(a=a, A=A, alpha=alpha,
+                           c=c, gamma=gamma,
+                           iter_num=iter_num, rep_num=rep_num,
+                           theta_0=theta_0, loss_obj=loss_obj,
+                           record_theta_flag=True, record_loss_flag=True)
+CS_SPSA_optimizer.train()
 
+CS_SPSA_theta_per_iter = CS_SPSA_optimizer.get_theta_per_iter()
+CS_SPSA_theta_per_iter_norm_error = Utility.get_theta_norm_error(CS_SPSA_theta_per_iter, theta_0, theta_star)
+Utility.plot_norm_error(CS_SPSA_theta_per_iter_norm_error, "CS-SPSA theta")
 
-def get_normalize_loss_error(loss_all, loss_0, loss_star, multiplier):
-    loss_ks = np.mean(loss_all, axis=1) # average over replicates
-    loss_ks_error = (loss_ks-loss_star) / (loss_0-loss_star)
-    return np.repeat(loss_ks_error, multiplier)
+CS_SPSA_loss_per_iter = CS_SPSA_optimizer.get_loss_per_iter()
+CS_SPSA_loss_per_iter_norm_error = Utility.get_loss_norm_error(CS_SPSA_loss_per_iter, loss_0, loss_star)
+Utility.plot_norm_error(CS_SPSA_loss_per_iter_norm_error, "CS-SPSA loss")
 
-def get_normalize_theta_error(theta_all, theta_0, theta_star, multiplier):
-    theta_ks_error = np.linalg.norm(theta_all - theta_star[:,None,None], axis=0)
-    theta_ks_error = np.mean(theta_ks_error, axis=1) / np.linalg.norm(theta_0 - theta_star)
-    return np.repeat(theta_ks_error, multiplier)
+print("CS-SPSA terminal loss error:", CS_SPSA_loss_per_iter_norm_error[-1])
 
 ### plot ###
-# FDSA
-FDSA_loss_ks_error = get_normalize_loss_error(FDSA_solver.loss_k_all, loss_0, loss_star, 2*p)
-FDSA_theta_ks_error = get_normalize_theta_error(FDSA_solver.theta_k_all, theta_0, theta_star, 2*p)
+today = date.today()
 
-# SPSA
-SPSA_loss_ks_error = get_normalize_loss_error(SPSA_solver.loss_k_all, loss_0, loss_star, 2)
-SPSA_theta_ks_error = get_normalize_theta_error(SPSA_solver.theta_k_all, theta_0, theta_star, 2)
-
-# CS_FDSA
-CS_FDSA_loss_ks_error = get_normalize_loss_error(CS_FDSA_solver.loss_k_all, loss_0, loss_star, p)
-CS_FDSA_theta_ks_error = get_normalize_theta_error(CS_FDSA_solver.theta_k_all, theta_0, theta_star, p)
-
-# CS_SPSA
-CS_SPSA_loss_ks_error = get_normalize_loss_error(CS_SPSA_solver.loss_k_all, loss_0, loss_star, 1)
-CS_SPSA_theta_ks_error = get_normalize_theta_error(CS_SPSA_solver.theta_k_all, theta_0, theta_star, 1)
-
-###
+# plot loss
 fig = plt.figure()
 ax = fig.add_subplot()
 plt.grid()
-
-line_FDSA, = ax.plot(np.concatenate(([1], FDSA_loss_ks_error)), 'k:')
-line_CS_FDSA, = ax.plot(np.concatenate(([1], CS_FDSA_loss_ks_error)), 'k-.')
-line_SPSA, = ax.plot(np.concatenate(([1], SPSA_loss_ks_error)), 'k--', dashes=(5,5))
+line_FDSA, = ax.plot(np.concatenate(([1], np.repeat(FDSA_loss_per_iter_norm_error, int(2*p)))), 'k:')
+line_CS_FDSA, = ax.plot(np.concatenate(([1], np.repeat(CS_FDSA_loss_per_iter_norm_error, int(p)))), 'k-.')
+line_SPSA, = ax.plot(np.concatenate(([1], np.repeat(SPSA_loss_per_iter_norm_error, int(2)))), 'k--', dashes=(5,5))
 line_SPSA_for_legend, = ax.plot([1], 'k--')
-line_CS_SPSA, = ax.plot(np.concatenate(([1], CS_SPSA_loss_ks_error)), 'k-')
+line_CS_SPSA, = ax.plot(np.concatenate(([1], np.repeat(CS_SPSA_loss_per_iter_norm_error, int(1)))), 'k-')
 
 plt.xlim(xmin=0, xmax=iter_num)
 plt.yscale("log")
 plt.legend((line_FDSA, line_CS_FDSA, line_SPSA_for_legend, line_CS_SPSA),
-           ("FDSA", "CS-FDSA", "SPSA", "CS-SPSA"), loc="upper right")
+           ("FDSA", "CS-FDSA", "SPSA", "CS-SPSA"), loc="best")
 plt.xlabel("Number of Function Measurements")
-plt.ylabel("Normalized Errors in Loss Function")
-plt.savefig('figure/quadatic_exponential_p_10_loss_2020_09_15.pdf')
+plt.ylabel("Normalized Errors in Loss (log scale)")
+plt.savefig("figure/quadatic_exponential_p_" + str(p) + "_loss_" + str(today) + ".pdf")
+plt.show()
 
-###
+# plot theta
 fig = plt.figure()
 ax = fig.add_subplot()
 plt.grid()
-
-line_FDSA, = ax.plot(np.concatenate(([1], FDSA_theta_ks_error)), 'k:')
-line_CS_FDSA, = ax.plot(np.concatenate(([1], CS_FDSA_theta_ks_error)), 'k-.')
-line_SPSA, = ax.plot(np.concatenate(([1], SPSA_theta_ks_error)), 'k--', dashes=(5,5))
+line_FDSA, = ax.plot(np.concatenate(([1], np.repeat(FDSA_theta_per_iter_norm_error, int(2*p)))), 'k:')
+line_CS_FDSA, = ax.plot(np.concatenate(([1], np.repeat(CS_FDSA_theta_per_iter_norm_error, int(p)))), 'k-.')
+line_SPSA, = ax.plot(np.concatenate(([1], np.repeat(SPSA_theta_per_iter_norm_error, int(2)))), 'k--', dashes=(10,10))
 line_SPSA_for_legend, = ax.plot([1], 'k--')
-line_CS_SPSA, = ax.plot(np.concatenate(([1], CS_SPSA_theta_ks_error)), 'k-')
+line_CS_SPSA, = ax.plot(np.concatenate(([1], np.repeat(CS_SPSA_theta_per_iter_norm_error, int(1)))), 'k-')
 
 plt.xlim(xmin=0, xmax=iter_num)
 plt.yscale("log")
 plt.legend((line_FDSA, line_CS_FDSA, line_SPSA_for_legend, line_CS_SPSA),
-           ("FDSA", "CS-FDSA", "SPSA", "CS-SPSA"), loc="upper right")
+           ("FDSA", "CS-FDSA", "SPSA", "CS-SPSA"), loc="best")
 plt.xlabel("Number of Function Measurements")
-plt.ylabel(r"Normalized Error in Estimation of $\mathbf{\theta}$")
-fig.savefig('figure/quadatic_exponential_p_10_theta_2020_09_15.pdf')
+plt.ylabel(r"Normalized Errors in Estimation of $\mathbf{\theta}$ (log scale)")
+plt.savefig("figure/quadatic_exponential_p_" + str(p) + "_theta_" + str(today) + ".pdf")
+plt.show()
+
+### APL plot ###
+plt.figure()
+plt.grid()
+plt.plot(np.concatenate(([1], np.repeat(FDSA_loss_per_iter_norm_error, int(2*p)))))
+plt.plot(np.concatenate(([1], np.repeat(SPSA_loss_per_iter_norm_error, int(2)))))
+plt.plot(np.concatenate(([1], np.repeat(CS_SPSA_loss_per_iter_norm_error, int(1)))))
+
+plt.xlim(xmin=0, xmax=iter_num)
+plt.yscale("log")
+plt.legend(("FDSA", "SPSA", "CS-SPSA"), loc="best")
+plt.xlabel("Number of Function Measurements")
+plt.ylabel("Normalized Errors in Loss (log scale)")
+plt.savefig("figure/quadatic_exponential_p_" + str(p) + "_loss_" + str(today) + "_APL.pdf")
+plt.show()
 
 print("finish plotting")

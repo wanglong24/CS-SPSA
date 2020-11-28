@@ -10,13 +10,21 @@ import numpy as np
 import control
 
 class LQR:
-    def __init__(self, p=2, T=100, x_0=None):
+    def __init__(self, p=2):
+        np.random.seed(99)
+
         if p == 2:
-            A = np.array([[1,1],[1,0]])
-            B = np.array([[0],[1]])
             self.n = 2
             self.m = 1
+            A = np.array([[1,1],[1,0]])
+            B = np.array([[0],[1]])
+
+            self.x_0 = 20 * np.array([1, 2]).reshape(n,1)
+
         elif p == 12:
+            self.n = 4
+            self.m = 3
+
             A = np.array([[-2.5, 1.2, 4.3, 0.1],
                           [0.97, -10.3, 0.4, -6.1],
                           [-9.2, 1.1, -4.9, 0.3],
@@ -25,20 +33,25 @@ class LQR:
                           [-3.2, 1.4, 0.0],
                           [-0.8, 0.1, 3.0],
                           [-1.1, -0.9, 5.2]])
-            self.n = 4
-            self.m = 3
 
+            self.x_0 = 20 * np.array([1, 2, -1, -0.5]).reshape(self.n,1)
+            self.K_star = np.array([
+                [1.60233232e-01, -1.36227805e-01, -9.93576677e-02, -4.28244630e-02],
+                [7.47596033e-02,  9.05753832e-02,  7.46951286e-02, -1.53947620e-01],
+                [3.65372978e-01, -2.59862175e-04,  5.91522023e-02, 8.25660846e-01]])
+
+        # for system
         C = np.eye(A.shape[0])
         D = np.zeros((A.shape[0], B.shape[1]))
         sysd = control.ss(A, B, C, D).sample(0.1)
         self.A, self.B, _, _ = control.ssdata(sysd)
-
-        self.Q = np.eye(self.n)
-        self.R = np.eye(self.m)
-        self.T = T
-        self.x_0 = x_0
         self.w_Sigma = 0.01 * np.eye(self.n)
         self.v_Sigma = 0.01 * np.eye(self.n)
+
+        # for loss function
+        self.T = 100
+        self.Q = np.eye(self.n)
+        self.R = np.eye(self.m)
 
     def next_state(self, x, u):
         x_next = np.dot(self.A, x) + np.dot(self.B, u)
@@ -49,8 +62,36 @@ class LQR:
         v = np.random.multivariate_normal(np.zeros(self.n), self.v_Sigma).reshape((self.n,1))
         return x + v
 
-    def compute_cost(self, K): # assume K.shape = (p,_)
-        K_mat = K.reshape((self.m, self.n))
+    def get_loss_noisy(self, iter_idx, theta):
+        K_mat = theta.reshape((self.m, self.n))
+        cost = 0
+        x_t = self.x_0
+        y_t = self.measurement_state(x_t)
+        for t in range(self.T):
+            cost += np.dot(y_t.T, np.dot(self.Q, y_t))
+            u_t = -np.dot(K_mat, x_t)
+            cost += np.dot(u_t.T, np.dot(self.R, u_t))
+            x_t = self.next_state(x_t, u_t)
+            y_t = self.measurement_state(x_t)
+        cost += np.dot(np.dot(y_t.T, self.Q), y_t)
+        return cost[0][0]
+
+    def get_loss_noisy_complex(self, iter_idx, theta):
+        K_mat = theta.reshape((self.m, self.n))
+        cost = 0 + 0j
+        x_t = self.x_0
+        y_t = self.measurement_state(x_t)
+        for t in range(self.T):
+            cost += np.dot(y_t.T, np.dot(self.Q, y_t))
+            u_t = -np.dot(K_mat, x_t)
+            cost += np.dot(u_t.T, np.dot(self.R, u_t))
+            x_t = self.next_state(x_t, u_t)
+            y_t = self.measurement_state(x_t)
+        cost += np.dot(np.dot(y_t.T, self.Q), y_t)
+        return cost[0][0]
+
+    def get_loss_true(self, theta): # assume theta.shape = (p,_)
+        K_mat = theta.reshape((self.m, self.n))
 
         cost_avg = 0
         cost_n = 20
@@ -65,25 +106,6 @@ class LQR:
             cost += np.dot(np.dot(x_t.T, self.Q), x_t)
             cost_avg += cost[0][0] / cost_n
         return cost_avg
-
-    def compute_cost_noisy(self, K):
-        K_mat = K.reshape((self.m, self.n))
-
-        if type(K_mat[0][0]) == np.complex128:
-            cost = 0 + 0j
-        else:
-            cost = 0
-
-        x_t = self.x_0
-        y_t = self.measurement_state(x_t)
-        for t in range(self.T):
-            cost += np.dot(y_t.T, np.dot(self.Q, y_t))
-            u_t = -np.dot(K_mat, x_t)
-            cost += np.dot(u_t.T, np.dot(self.R, u_t))
-            x_t = self.next_state(x_t, u_t)
-            y_t = self.measurement_state(x_t)
-        cost += np.dot(np.dot(y_t.T, self.Q), y_t)
-        return cost[0][0]
 
 if __name__ == "__main__":
     # p = 2; n = 2; m = 1
